@@ -1,44 +1,78 @@
 'use client';
-import React from 'react';
-import { useSession, signIn, signOut } from 'next-auth/react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import * as z from 'zod';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { useDebounceValue } from 'usehooks-ts';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import { signUpSchema } from '@/schemas/signUpSchema';
+import axios, { AxiosError } from 'axios';
+import { ApiResponse } from '@/types/ApiResponse';
 
-const SignIn = () => {
-	const { data: session } = useSession();
+const page = () => {
+	const [username, setUsername] = useState('');
+	const [usernameMessage, setUsernameMessage] = useState('');
+	const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	return (
-		<div className='flex min-h-screen items-center justify-center bg-gray-950 px-4'>
-			<div className='w-full max-w-sm rounded-xl border border-gray-800 bg-gray-900 p-6 shadow-lg'>
-				{session ?
-					<div className='space-y-4 text-center'>
-						<p className='text-sm text-gray-400'>Signed in as</p>
+	const debouncedUsername = useDebounceValue(username, 300);
+	const router = useRouter();
 
-						<p className='break-all text-sm font-medium text-gray-100'>
-							{session.user?.email}
-						</p>
-
-						<button
-							onClick={() => signOut()}
-							className='w-full rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500'
-						>
-							Sign out
-						</button>
-					</div>
-				:	<div className='space-y-4 text-center'>
-						<p className='text-sm text-gray-400'>
-							You are not signed in
-						</p>
-
-						<button
-							onClick={() => signIn()}
-							className='w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
-						>
-							Sign in
-						</button>
-					</div>
+	// ZOD Implementation
+	const form = useForm<z.infer<typeof signUpSchema>>({
+		resolver: zodResolver(signUpSchema),
+		defaultValues: {
+			username: '',
+			email: '',
+			password: '',
+		},
+	});
+	useEffect(() => {
+		const checkUsernameUnique = async () => {
+			if (debouncedUsername) {
+				setIsCheckingUsername(true);
+				setUsernameMessage('');
+				try {
+					const response = await axios.get(
+						`/api/check-username-unique?username=${debouncedUsername}`
+					);
+					setUsernameMessage(response.data.message);
+				} catch (error) {
+					const axiosError = error as AxiosError<ApiResponse>;
+					setUsernameMessage(
+						axiosError.response?.data?.message ??
+							'Error checking username'
+					);
+				} finally {
+					setIsCheckingUsername(false);
 				}
-			</div>
-		</div>
-	);
+			}
+		};
+		checkUsernameUnique();
+	}, [debouncedUsername]);
+
+	const onSubmit = async (data: z.infer<typeof signUpSchema>) => {
+		setIsSubmitting(true);
+		try {
+			const response = await axios.post<ApiResponse>(
+				'/api/sign-up',
+				data
+			);
+			if (response) {
+				toast(response.data.message);
+				router.replace(`/verify/${username}`);
+			}
+		} catch (error) {
+			console.error('Error in sign up of user:', error);
+			const axiosError = error as AxiosError;
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+
+	return <div>page</div>;
 };
 
-export default SignIn;
+export default page;
